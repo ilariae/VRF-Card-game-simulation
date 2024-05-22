@@ -171,6 +171,7 @@ dependencies = [
 name = "pba-activity-3"
 version = "0.1.0"
 dependencies = [
+ "rand",
  "schnorrkel",
 ]
 
