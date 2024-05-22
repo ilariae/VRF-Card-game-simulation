@@ -173,6 +173,7 @@ version = "0.1.0"
 dependencies = [
  "rand",
  "schnorrkel",
+ "sha2",
 ]
 
 [[package]]
