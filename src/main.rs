@@ -1,7 +1,7 @@
+use std::io::{self, Write};
+
 use ::schnorrkel;
 use schnorrkel::Keypair;
-
-struct GameState {}
 
 struct Player {
     id: u8,
@@ -39,14 +39,19 @@ fn select_winner(players: Vec<Player>) {
 fn main() {
     // GAME VARIABLES
     let NUM_PLAYERS = 3;
-
-    while true {
+    let mut continue_playing = true;
+    while continue_playing {
         let mut players = Vec::new();
+        println!("Game will start with {} number of players", NUM_PLAYERS);
 
         for i in 0..NUM_PLAYERS {
             // 1) create player key pair
 
             let player = create_player(i as u8);
+            println!(
+                "P{} has joined the game with public_key: {:?}",
+                i, player.key_pair.public
+            );
             // 2) each player generates a random values and publishes the commitment
 
             generate_random_for_player(&player);
@@ -62,8 +67,18 @@ fn main() {
         // 6) check who's the winner
 
         // 7) loop
-    }
+        println!("Do you want to continue the simulation ? (Y/N)");
 
-    let pair = schnorrkel::Keypair::generate();
-    println!("Hello, world!");
+        let mut input = String::new();
+        io::stdout().flush().unwrap(); // Ensure the prompt is printed before reading input
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
+
+        match input.trim().to_lowercase().as_str() {
+            "y" => continue_playing = true,
+            "n" => continue_playing = false,
+            _ => println!("Invalid input. Please enter 'Y' or 'N'."),
+        }
+    }
 }
