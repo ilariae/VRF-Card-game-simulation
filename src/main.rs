@@ -21,9 +21,35 @@ fn create_player(player_number: u8) -> Player {
     };
 }
 
-fn generate_random_for_player(player: &Player) {
-    // TODO: update selected_card and generate proof / commitments
-    todo!()
+// update selected_card and generate proof / commitments
+fn generate_random_for_player(player: &mut Player) {
+    // generate random value as VRF input 
+    let mut rng = OsRng;
+    let mut random_input = [0u8; 32]; // initializes 32 byte array filled with zeros
+    rng.fill_bytes(&mut random_input); // fills with random bytes -> random 32 bytes higher entropy 
+
+    // sign the input using VRF
+    let vrf_result = player.key_pair.vrf_sign(&random_input).unwrap(); // key_pair generates vrf signature on random input
+    // vrf_sign reduces result containing vrf output and proof 
+    let vrf_output = vrf_result.0.to_output(); // extracts vrf output from result [0]
+    let vrf_proof = vrf_result.1; // extracts vrf proof from reslt [1]
+
+    // calculate card value mod 52 
+    // returns the VRF output as a byte array and takes first 8 bytes of this array
+    // converts the 8-byte slice into a u64 integer
+    // result modulo 52 to ensure it is within the range of card values
+    let card_value = (u64::from_le_bytes(vrf_output.to_bytes()[..8].try_into().unwrap()) % 52) + 1;
+
+    // hash the vrf output to create a commitment 
+    let mut hasher = Sha256::new(); // create new sha256 hasher instance
+    hasher.update(&random_input); // feeds random input to hasher
+    let commitment = hasher.finalize(); 
+
+    // update players selected card and commitment 
+    player.selected_card = Some(card_value as u32);
+    player.commitment = Some(commitment.to_vec());
+
+    
 }
 
 fn verify_commitments(player_commitments: Vec<Player>) {
