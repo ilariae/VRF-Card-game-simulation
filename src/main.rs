@@ -29,7 +29,7 @@ fn create_player(player_number: u8) -> Player {
     };
 }
 
-fn generate_random_seed() {
+fn generate_random_seed() -> OsRng {
     let mut rng = OsRng;
     let mut random_input = [0u8; 32]; // initializes 32 byte array filled with zeros
     rng.fill_bytes(&mut random_input); // fills with random bytes -> random 32 bytes higher entropy
@@ -99,8 +99,8 @@ fn main() {
         }
 
         for i in 0..NUM_PLAYERS {
-            let mut player = players[i];
-            generate_random_for_player(player);
+            let mut player = &mut players[i as usize];
+            generate_random_for_player(&mut player);
             println!(
                 "P{} committed value {:?}",
                 i,
