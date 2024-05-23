@@ -1,4 +1,5 @@
-# Group - 17 VRF Card Game Simulation
+# Group - 17 Activity 2
+### VRF Card-game Simulation
 Members: Tommy, Ilariae, Noor, Chewy
 
 ```
