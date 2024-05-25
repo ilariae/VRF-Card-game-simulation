@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     io::{self, Read, Write},
     ops::Shl,
 };
@@ -6,7 +7,6 @@ use std::{
 use super::message_board::PublicMessageBoard;
 use bitcoin::hashes::hex::ToHex;
 use rand::{rngs::OsRng, RngCore};
-use rand::{rngs::SmallRng, seq::IteratorRandom, Rng, SeedableRng};
 use schnorrkel::{self, vrf::VRFProof};
 use schnorrkel::{context::SigningContext, signing_context, Keypair};
 use sha2::{Digest, Sha256, Sha512};
@@ -27,19 +27,24 @@ const NUM_PLAYERS: u8 = 3;
 struct Player {
     id: u8, // this will be used to index commitments
     key_pair: Keypair,
+    commitment_str: Option<String>,
 }
 pub struct Reveal((u64, VRFProof));
-struct Game {
-    message_board: PublicMessageBoard,
-    commitments: Vec<Vec<u8>>,
-    reveals: Vec<Reveal>,
-    players: Vec<Player>,
+
+#[derive(Clone)]
+
+struct Game<'a> {
+    pub message_board: &'a RefCell<PublicMessageBoard>,
+    pub commitments: &'a RefCell<Vec<Vec<u8>>>,
+    pub reveals: &'a RefCell<Vec<Reveal>>,
+    pub players: Vec<Player>,
 }
 
 fn create_player(player_number: u8) -> Player {
     return Player {
         id: player_number,
         key_pair: schnorrkel::Keypair::generate(),
+        commitment_str: None,
     };
 }
 
@@ -97,10 +102,11 @@ fn select_winner(game: &Game) {
 Each player will generate their commit
 */
 fn generate_commit_for_players(mut game: &Game) {
-    for i in 0..game.players.len() {
-        let mut player = &game.players[i];
+    let mut public_commitment = game.commitments.borrow_mut();
+    let players = &game.players;
+    for player in players {
         let commit = generate_commit_for_player(player.clone());
-        game.commitments.push(commit);
+        public_commitment.push(commit);
     }
 }
 
@@ -108,22 +114,24 @@ fn generate_commit_for_players(mut game: &Game) {
 Each player will commit their result to the public board
 */
 
-fn publish_commit_to_board_for_players(mut game: &Game) {
+fn publish_commit_to_board_for_players(game: &Game) {
+    let mut public_board = game.message_board.borrow_mut();
+    let mut player_commitments = game.commitments.borrow();
     for i in 0..game.players.len() {
         let mut player = &game.players[i];
-        let commit_data = &game.commitments[i];
-        let result = &game
-            .message_board
-            .post_commitment(commit_data.as_bytes_ref().to_hex());
+        let commit_data = &player_commitments[i];
+        let result = public_board.post_commitment(commit_data.as_bytes_ref().to_hex());
+        player.commitment_str = Some(result.0);
         // TODO: each player will commit and check the other commits of the people previously
     }
 }
 
 fn get_vrf_input(game: &Game) -> [u8; 32] {
     let mut sum: [u8; 32] = [0; 32];
+    let mut player_commitments = game.commitments.borrow();
 
     // Iterate over the outer vector
-    for inner_vec in &game.commitments {
+    for inner_vec in player_commitments.into_iter() {
         // Iterate over the elements of the inner vector
         for (i, &byte) in inner_vec.iter().enumerate() {
             // Sum the bytes into the fixed-size array, wrapping around on overflow
@@ -133,26 +141,25 @@ fn get_vrf_input(game: &Game) -> [u8; 32] {
     sum
 }
 
-fn reveal_results_for_players(mut game: Game) {
+fn reveal_results_for_players(mut game: &Game) {
+    let mut public_board = game.message_board.borrow_mut();
+    let commitments = game.commitments.borrow();
     for i in 0..game.players.len() {
-        // Iterate over the elements of the inner vector
-
         let mut player = &game.players[i];
-        let commit = &game.commitments[i];
-        game.message_board
-            .post_reveal(commit.as_bytes_ref().to_hex());
+        public_board.post_reveal(player.commitment_str.clone().unwrap());
     }
 }
 
 fn generate_pseudorandom_output_for_players(game: &Game) {
     let shared_vrf_input = get_vrf_input(game);
-
+    let mut public_board = game.message_board.borrow_mut();
+    let mut revealed_values = game.reveals.borrow_mut();
     for i in 0..game.players.len() {
         // Iterate over the elements of the inner vector
 
-        let mut player = &game.players[i];
+        let player = &game.players[i];
         let reveal = generate_pseudorandom_output_for_player(player.clone(), shared_vrf_input);
-        game.reveals.push(reveal);
+        revealed_values.push(reveal);
     }
 }
 // update selected_card and generate proof / commitments
@@ -177,10 +184,12 @@ fn generate_pseudorandom_output_for_player(player: Player, shared_vrf_input: [u8
     Reveal((card_value, vrf_proof))
 }
 
-fn init_game() -> Game {
+fn init_game() -> Game<'static> {
     let mut players = Vec::new();
     let rng_seed = 2023;
-    let mut pmb = PublicMessageBoard::new(rng_seed);
+    let pmb = PublicMessageBoard::new(rng_seed);
+    let pmb_refcell = RefCell::new(pmb);
+
     for i in 0..NUM_PLAYERS {
         // 1) create player key pair
 
@@ -192,9 +201,9 @@ fn init_game() -> Game {
 
     return Game {
         players: players,
-        commitments: Vec::new(),
-        message_board: pmb,
-        reveals: Vec::new(),
+        commitments: &RefCell::new(Vec::new()),
+        message_board: &pmb_refcell,
+        reveals: &RefCell::new(Vec::new()),
     };
 }
 
@@ -223,7 +232,7 @@ fn main() {
 
         generate_pseudorandom_output_for_players(&game);
 
-        // Step 4: Each player then can verify their proofs against eachtoher
+        // Step 4: Each player then can verify their proofs against eachother
 
         verify_proofs_for_players(&game);
 
